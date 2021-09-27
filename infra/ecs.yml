@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS + ALB'
+
+Resources:
+  ECSCluster:
+  Type: 'AWS::ECS::Cluster'
+  Properties:
+    ClusterName: 'MyFargateCluster'
+    CapacityProviders: FARGATE
+
+  ECSService:
+  Type: AWS::ECS::Service
+  DependsOn: !Ref 'ListenerRule'
+  Properties:
+    ServiceName: MyService
+    TaskDefinition: !Ref ECSTaskDefinition
+    LaunchType: FARGATE
+    DesiredCount: 2
+    DeploymentConfiguration:
+      MaximumPercent: 200
+      MinimumHealthyPercent: 70
+    NetworkConfiguration:
+      AwsvpcConfiguration:
+        AssignPublicIp: ENABLED
+        Subnets:
+         - !ImportValue publicSubnet1
+         - !ImportValue publicSubnet2
+         SecurityGroups: !Ref ECSsecurityGroup
+    LoadBalancers:
+      TargetGroupArn: !Ref: MyTargetGroup
+      ContainerPort: 3885
+      ContainerName: MyContainer
+    Cluster: !Ref ECSCluster
+
+  TaskDefinition: 
+    Type: AWS::ECS::TaskDefinition
+    Properties: 
+      Family: familyTask
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !ImportValue ECSTaskExecutionRole
+      ContainerDefinitions:
+        - Name: MyContainer
+          Image: #[ARN of ECR repository]
+          Cpu: 256
+          Memory: 512
+          PortMappings:
+            - ContainerPort: 3885
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: 'MyLogGroup'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: 'Mark-I'
+              
+
+  MyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /check
+      HealthCheckProtocol: HTTP 
+      HealthCheckTimeoutSeconds: 120
+      HealthyThresholdCount: 5
+      Name: MyTargetGroup
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip 
+      UnhealthyThresholdCount: 10
+      VpcId: !ImportValue VPC
+      Matcher:
+        HttpCode: 200-250
+    
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: ELB-for-ECS
+      IpAddressType: ipv4
+      SecurityGroups: !Ref ALBSecurityGroup
+      Subnets: 
+        - Ref: !ImportValue 'publicSubnet1'
+        - Ref: !ImportValue 'publicSubnet2'
+
+ ELBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTargetGroup
+      LoadBalancerArn: !Ref 'ALB'
+      Port: 80
+      Protocol: HTTP
+
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties: 
+      Actions:
+        - TargetGroupArn: !Ref MyTargetGroup
+          Type: forward
+      ListenerArn: !Ref ELBListener
+      Priority: 1
+      Condtitions: 
+        - Field: path-pattern
+          Values:
+            - /matematej/api*
+
+
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Allow http to client host
+        VpcId: !ImportValue 'myVPC'
+        SecurityGroupIngress:
+         - IpProtocol: -1
+           CidrIp: 0.0.0.0/0
+
+  ECSsecurityGroup:
+  Type: AWS::EC2::SecurityGroup
+  Properties:
+      VpcId: !ImportValue 'myVPC'
+      SecurityGroupIngress:
+       - IpProtocol: -1
+        SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  CloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: 'MyLogGroup'
+      RetentionInDays: 1
+
+Outputs:
+  DomainName:
+    Description: The domain name of ELB
+    Value: !Join ['', ['http://', !GetAtt ALB.DNSName, '/matematej/api']]
+    Export:
+      Name: 'ENDPOINTurl'

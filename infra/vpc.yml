@@ -1,9 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: VPC for ecs test
+Description: 'VPC for ecs project'
 
 Resources:
-
-  VPC:
+  myVPC:
     Type: 'AWS::EC2::VPC'
     Properties:
       CidrBlock: '10.0.0.0/16'
@@ -11,73 +10,83 @@ Resources:
       EnableDnsHostnames: true
       InstanceTenancy: default
 
-  Subnet1:
-    Type: AWS::EC2::Subnet
+  publicSubnet1:
+    Type: 'AWS::EC2::Subnet'
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref myVPC
+      CidrBlock: '10.0.1.0/24'
       AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: !Sub '10.0.0.0/20'
       MapPublicIpOnLaunch: true
 
-  Subnet2:
-    Type: AWS::EC2::Subnet
+  publicSubnet2:
+    Type: 'AWS::EC2::Subnet'
     Properties:
-      VpcId: !Ref VPC
+      VpcId:
+        Ref: myVPC
+      CidrBlock: '10.0.2.0/24'
       AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: !Sub '10.0.32.0/20'
       MapPublicIpOnLaunch: true
 
-  InternetGateway:
+  myInternetGateway:
     Type: 'AWS::EC2::InternetGateway'
 
-  VPCGatewayAttachment:
+  myRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: myInternetGateway
+    Properties:
+       RouteTableId:
+         Ref: myRouteTable
+       DestinationCidrBlock: '0.0.0.0/0'
+       GatewayId:
+         Ref: myInternetGateway
+
+  AttachGateway:
     Type: 'AWS::EC2::VPCGatewayAttachment'
     Properties:
-      InternetGatewayId: !Ref InternetGateway
-      VpcId: !Ref VPC
+      VpcId: !Ref myVPC
+      InternetGatewayId:
+        Ref: myInternetGateway
 
-  RouteTable:
+  myRouteTable:
     Type: 'AWS::EC2::RouteTable'
     Properties:
-      VpcId: !Ref VPC
+      VpcId:  
+        Ref: myVPC
 
-  RouteTableAssociation1:
+  mySubnetRouteTableAssociation1:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
-      SubnetId: !Ref Subnet1
-      RouteTableId: !Ref RouteTable
+      SubnetId:
+        Ref: publicSubnet1
+      RouteTableId:
+        Ref: myRouteTable
 
-  RouteTableAssociation2:
+  mySubnetRouteTableAssociation2:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
-      SubnetId: !Ref Subnet2
-      RouteTableId: !Ref RouteTable
-
-  InternetRoute:
-    Type: 'AWS::EC2::Route'
-    DependsOn: VPCGatewayAttachment
-    Properties:
-      GatewayId: !Ref InternetGateway
-      RouteTableId: !Ref RouteTable
-      DestinationCidrBlock: '0.0.0.0/0'
+      SubnetId:
+        Ref: publicSubnet2
+      RouteTableId:
+        Ref: myRouteTable
 
 Outputs:
-
-  VPC:
-    Description: VPC
-    Value: !Ref VPC
+  myVPC:
+    Description: 'The ID of the VPC'
+    Value: !Ref myVPC
     Export:
       Name: 'VPC'
-
-  Subnet1:
-    Description: 'Subnet 1 on AZ1'
-    Value: !Ref Subnet1
+    
+  publicSubnet1:
+    Description: 'The ID of the VPC'
+    Value: !Ref publicSubnet1
     Export:
       Name: 'Subnet1'
 
-  Subnet2:
-    Description: 'Subnet 2 on AZ2'
-    Value: !Ref Subnet2
+  publicSubnet2:
+    Description: 'The ID of the VPC'
+    Value: !Ref publicSubnet2
     Export:
       Name: 'Subnet2'
+
+
 
